@@ -56,6 +56,12 @@
     .picker{order:2;margin-top:14px}
   }
 
+  .page-head{display:flex;align-items:baseline;gap:12px;margin-bottom:10px}
+  .page-head h1{font-size:20px;margin:0}
+  .page-head span{font-size:14px;color:var(--muted);font-weight:600}
+  .search-row{display:flex;gap:10px;margin-bottom:10px}
+  .search-row input{flex:1;max-width:320px;font:inherit;font-size:14px;padding:8px 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink)}
+  #picError{display:none;font-size:13.5px;color:var(--gold);font-weight:700;margin:0 0 10px}
   /* ---------- toolbar ---------- */
   .bar{
     display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;justify-content:space-between;
@@ -91,7 +97,7 @@
     padding:4px;cursor:pointer;width:92px;flex:none;font:inherit;color:inherit;text-align:left;
   }
   .pick img{width:100%;aspect-ratio:3/2;object-fit:cover;border-radius:6px;display:block;background:var(--felt)}
-  .pick span{display:block;font-size:11.5px;font-weight:700;margin:4px 2px 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pick span{display:block;font-size:11.5px;font-weight:700;margin:4px 2px 2px;line-height:1.25}
   .pick.sel{border-color:var(--accent)}
   .pick.upload{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border-style:dashed;color:var(--muted);min-height:76px}
   .pick.upload span{margin:0;font-size:12px}
@@ -163,6 +169,7 @@
   }
   #tray .piece{position:relative;left:auto !important;top:auto !important;width:100% !important;height:auto !important}
   #tray .piece canvas{width:100%;height:auto}
+  #board .piece canvas{width:100%;height:auto}
   #trayEmpty{display:none;font-size:13.5px;color:var(--muted);padding:10px 2px;line-height:1.45}
   #trayEmpty.on{display:block}
   .hint-line{font-size:13px;color:var(--muted);margin:10px 2px 0;line-height:1.45}
@@ -171,9 +178,12 @@
 <body>
 <div class="wrap">
 
+  <header class="page-head"><h1>Puzzle</h1><span id="picName">Mountain Lake</span></header>
+
   <div class="bar">
     <div class="bar-group">
       <button class="btn primary" id="newBtn" type="button">New game</button>
+      <button class="btn" id="undoBtn" type="button" disabled>Undo</button>
       <button class="btn" id="ghostBtn" type="button" aria-pressed="true">Guide</button>
       <button class="btn" id="peekBtn" type="button">Hold to peek</button>
       <button class="btn" id="hintBtn" type="button">Hint</button>
@@ -195,6 +205,7 @@
     </div>
   </div>
 
+  <div class="search-row"><input id="picSearch" type="search" placeholder="Search pictures" aria-label="Search pictures" /><p id="picError"></p></div>
   <div class="picker" id="picker" role="group" aria-label="Choose a picture"></div>
 
   <div class="stage">
@@ -473,6 +484,11 @@
   var placed = 0, moves = 0;
   var startedAt = 0, elapsed = 0, timerId = 0, running = false, solved = false;
   var selected = null;    // piece chosen by tap, waiting for a board tap
+  var undoStack = [];
+  var undoBtn = document.getElementById("undoBtn");
+  var picError = document.getElementById("picError");
+  var picSearch = document.getElementById("picSearch");
+  var picNameEl = document.getElementById("picName");
   var customURL = null;
 
   /* ---------------- picker ---------------- */
@@ -480,11 +496,19 @@
     var b = document.createElement("button");
     b.type = "button"; b.className = "pick"; b.dataset.file = p.file;
     var im = document.createElement("img");
-    im.src = "assets/" + p.file + ".webp"; im.alt = ""; im.loading = "lazy"; im.draggable = false;
+    im.src = "https://picsum.photos/seed/" + p.file + "/276/184"; im.alt = ""; im.loading = "lazy"; im.draggable = false;
+    im.onerror = function(){ im.style.display = "none"; };
     var s = document.createElement("span"); s.textContent = p.name;
     b.appendChild(im); b.appendChild(s);
-    b.addEventListener("click", function(){ loadPicture("assets/" + p.file + ".webp", p.name, b); });
+    b.addEventListener("click", function(){ loadPicture("https://picsum.photos/seed/" + p.file + "/1200/800", p.name, b); });
     picker.appendChild(b);
+  });
+  picSearch.addEventListener("input", function(){
+    var q = picSearch.value.trim().toLowerCase();
+    picker.querySelectorAll(".pick").forEach(function(el){
+      if(el.classList.contains("upload")) return;
+      el.style.display = (!q || el.textContent.toLowerCase().indexOf(q) !== -1) ? "" : "none";
+    });
   });
   var up = document.createElement("button");
   up.type = "button"; up.className = "pick upload";
@@ -498,17 +522,27 @@
     customURL = URL.createObjectURL(f);
     picker.querySelectorAll(".pick").forEach(function(el){ el.classList.remove("sel"); });
     up.classList.add("sel");
-    loadPicture(customURL, "Your photo", null);
+    loadPicture(customURL, "Your photo", up);
     fileInput.value = "";
   });
 
   function loadPicture(url, name, btn){
-    picker.querySelectorAll(".pick").forEach(function(el){ el.classList.remove("sel"); });
-    if(btn) btn.classList.add("sel");
-    imgURL = url; imgName = name;
-    img = new Image();
-    img.onload = function(){ newGame(); };
-    img.src = url;
+    picError.style.display = "none";
+    var t = new Image();
+    t.onload = function(){
+      img = t; imgURL = url; imgName = name;
+      picNameEl.textContent = name;
+      if(btn){
+        picker.querySelectorAll(".pick").forEach(function(el){ el.classList.remove("sel"); });
+        btn.classList.add("sel");
+      }
+      newGame();
+    };
+    t.onerror = function(){
+      picError.textContent = "That picture did not load. Keeping " + (imgName || "the last picture") + ".";
+      picError.style.display = "block";
+    };
+    t.src = url;
   }
 
   /* ---------------- grid sizing ---------------- */
@@ -618,7 +652,7 @@
   function newGame(){
     if(!img.naturalWidth) return;
     stopTimer();
-    placed = 0; moves = 0; elapsed = 0; running = false; solved = false; selected = null;
+    placed = 0; moves = 0; elapsed = 0; running = false; solved = false; selected = null; undoStack.length = 0;
     winBar.classList.remove("on");
     board.classList.remove("peeking");
 
@@ -682,6 +716,7 @@
     var inTray = pieces.filter(function(p){ return p.state === "tray"; }).length;
     trayCount.textContent = inTray ? inTray + " left" : "";
     trayEmpty.classList.toggle("on", inTray === 0);
+    undoBtn.disabled = undoStack.length === 0;
   }
   function startTimer(){
     if(running || solved) return;
@@ -697,10 +732,30 @@
     if(timerId){ clearInterval(timerId); timerId = 0; }
   }
 
+  /* ---------------- undo: a piece can never be lost by a bad drop ---------------- */
+  function pushUndo(p){
+    undoStack.push({ p:p, state:p.state, lx:p.lx, ly:p.ly, placed:placed, moves:moves, solved:solved });
+    if(undoStack.length > 50) undoStack.shift();
+  }
+  function undoLast(){
+    var u = undoStack.pop(); if(!u) return;
+    var p = u.p;
+    p.state = u.state; p.lx = u.lx; p.ly = u.ly;
+    p.el.classList.remove("locked");
+    if(u.state === "tray"){ tray.appendChild(p.el); }
+    else if(u.state === "loose"){ looseLayer.appendChild(p.el); positionPiece(p); }
+    else { placedLayer.appendChild(p.el); p.el.classList.add("locked"); positionPiece(p); }
+    placed = u.placed; moves = u.moves; solved = u.solved;
+    if(!solved) winBar.classList.remove("on");
+    deselect(); updateStats();
+  }
+  undoBtn.addEventListener("click", undoLast);
+
   /* ---------------- placement ---------------- */
   function homeXY(p){ return { x: p.c / cols, y: p.r / rows }; }
 
   function lockPiece(p){
+    pushUndo(p);
     p.state = "locked";
     p.el.classList.add("locked");
     p.el.style.zIndex = 1;
@@ -714,10 +769,11 @@
   }
 
   function placeLoose(p, fx, fy){
+    pushUndo(p);
     // fx, fy: desired cell-origin position as board fractions
     var cw = 1 / cols, ch = 1 / rows;
-    fx = Math.max(-cw * 0.4, Math.min(1 - cw * 0.6, fx));
-    fy = Math.max(-ch * 0.4, Math.min(1 - ch * 0.6, fy));
+    fx = Math.max(0, Math.min(1 - cw, fx));
+    fy = Math.max(0, Math.min(1 - ch, fy));
     p.lx = fx; p.ly = fy;
     p.state = "loose";
     p.el.style.zIndex = 10 + Math.floor(Math.random() * 5);
@@ -728,6 +784,7 @@
   }
 
   function sendToTray(p){
+    pushUndo(p);
     p.state = "tray";
     tray.appendChild(p.el);
     moves++;
@@ -781,31 +838,19 @@
     el.addEventListener("pointerdown", function(e){
       if(p.state === "locked" || solved) return;
       e.preventDefault();
-      var bw = boardW(), m = margin();
-      var rect = el.getBoundingClientRect();
       drag = {
         id: e.pointerId,
-        grabFX: (e.clientX - rect.left) / rect.width,   // grab point as a fraction,
-        grabFY: (e.clientY - rect.top) / rect.height,   // so it survives the tray->board rescale
-        grabDX: e.clientX - rect.left,
-        grabDY: e.clientY - rect.top,
+        grabFX: 0, grabFY: 0,
         startX: e.clientX, startY: e.clientY,
-        moved: false,
-        fromTray: p.state === "tray"
+        moved: false, lifted: false,
+        fromTray: p.state === "tray",
+        prevState: p.state, prevLx: p.lx, prevLy: p.ly
       };
-      // lift the element into the loose layer at board scale
-      if(p.state === "tray"){
-        var brect = board.getBoundingClientRect();
-        p.lx = (rect.left - brect.left + m) / brect.width;
-        p.ly = (rect.top - brect.top + m) / brect.height;
-        p.state = "loose";
-        looseLayer.appendChild(el);
-        renderPiece(p);
-        positionPiece(p);
-        var nr = el.getBoundingClientRect();
-        drag.grabDX = drag.grabFX * nr.width;
-        drag.grabDY = drag.grabFY * nr.height;
-      }
+      var rect = el.getBoundingClientRect();
+      drag.grabFX = (e.clientX - rect.left) / rect.width;
+      drag.grabFY = (e.clientY - rect.top) / rect.height;
+      drag.grabDX = e.clientX - rect.left;
+      drag.grabDY = e.clientY - rect.top;
       el.classList.add("dragging");
       el.setPointerCapture(e.pointerId);
       startTimer();
@@ -815,10 +860,24 @@
       if(!drag || e.pointerId !== drag.id) return;
       var dx = e.clientX - drag.startX, dy = e.clientY - drag.startY;
       if(Math.abs(dx) + Math.abs(dy) > 6) drag.moved = true;
+      if(!drag.moved) return;
+      if(drag.fromTray && !drag.lifted){
+        // lift only once the pointer actually moves: a tap never leaves the tray
+        var brect0 = board.getBoundingClientRect();
+        p.lx = (e.clientX - brect0.left) / brect0.width - 0.5 / cols;
+        p.ly = (e.clientY - brect0.top) / brect0.height - 0.5 / rows;
+        p.state = "loose";
+        looseLayer.appendChild(el);
+        renderPiece(p);
+        positionPiece(p);
+        var nr = el.getBoundingClientRect();
+        drag.grabDX = nr.width / 2;
+        drag.grabDY = nr.height / 2;
+        drag.lifted = true;
+      }
+      if(p.state !== "loose") return;
       var brect = board.getBoundingClientRect();
       var m = margin();
-      // element top-left in board coords so the grabbed point stays under the pointer;
-      // on touch, lift the piece a little so the finger does not hide it
       var lift = e.pointerType === "touch" ? cellH() * 0.55 : 0;
       var left = e.clientX - brect.left - drag.grabDX;
       var top  = e.clientY - brect.top - drag.grabDY - lift;
@@ -828,25 +887,30 @@
       drag.cellY = (top + m) / brect.height;
     });
 
+    function restorePrev(){
+      if(drag.prevState === "tray"){ p.state = "tray"; tray.appendChild(p.el); }
+      else { p.state = "loose"; p.lx = drag.prevLx; p.ly = drag.prevLy; looseLayer.appendChild(p.el); positionPiece(p); }
+    }
     function finish(e, cancelled){
       if(!drag || e.pointerId !== drag.id) return;
       var d = drag; drag = null;
       el.classList.remove("dragging");
-      if(cancelled){ positionPiece(p); return; }
+      if(cancelled){ if(d.lifted) restorePrev(); return; }
       if(!d.moved){
-        // a tap: select for tap-to-place, or deselect if already selected
-        if(p.state === "loose") positionPiece(p);
+        // a tap: select in place, never move the piece
         if(selected === p) deselect(); else select(p);
         return;
       }
+      if(!d.lifted){ restorePrev(); return; }
       deselect();
-      var fx = d.cellX, fy = d.cellY;
-      if(fx === undefined){ positionPiece(p); return; }
-      // dropped outside the board? below the board over the tray panel sends it back
       var brect = board.getBoundingClientRect();
-      var belowBoard = e.clientY > brect.bottom + 24;
-      var outside = fx < -0.25 || fx > 1.1 || fy < -0.25 || fy > 1.1;
-      if(belowBoard || outside){ sendToTray(p); return; }
+      // dropped outside the board in screen space: back to the tray, never lost
+      if(e.clientX < brect.left - 8 || e.clientX > brect.right + 8 ||
+         e.clientY < brect.top - 8 || e.clientY > brect.bottom + 8){ sendToTray(p); return; }
+      var m = margin();
+      var lift = e.pointerType === "touch" ? cellH() * 0.55 : 0;
+      var fx = (e.clientX - brect.left - d.grabDX + m) / brect.width;
+      var fy = (e.clientY - brect.top - d.grabDY - lift + m) / brect.height;
       if(!trySnap(p, fx, fy)) placeLoose(p, fx, fy);
     }
     el.addEventListener("pointerup", function(e){ finish(e, false); });
