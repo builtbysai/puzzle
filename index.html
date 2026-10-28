@@ -891,6 +891,7 @@
         drag.grabDX = nr.width / 2;
         drag.grabDY = nr.height / 2;
         drag.lifted = true;
+        updateStats();
       }
       if(p.state !== "loose") return;
       var brect = board.getBoundingClientRect();
@@ -904,21 +905,22 @@
       drag.cellY = (top + m) / brect.height;
     });
 
-    function restorePrev(){
-      if(drag.prevState === "tray"){ p.state = "tray"; tray.appendChild(p.el); }
-      else { p.state = "loose"; p.lx = drag.prevLx; p.ly = drag.prevLy; looseLayer.appendChild(p.el); positionPiece(p); }
+    function restorePrev(d){
+      if(d.prevState === "tray"){ p.state = "tray"; tray.appendChild(p.el); }
+      else { p.state = "loose"; p.lx = d.prevLx; p.ly = d.prevLy; looseLayer.appendChild(p.el); positionPiece(p); }
+      updateStats();
     }
     function finish(e, cancelled){
       if(!drag || e.pointerId !== drag.id) return;
       var d = drag; drag = null;
       el.classList.remove("dragging");
-      if(cancelled){ if(d.lifted) restorePrev(); return; }
+      if(cancelled){ if(d.lifted) restorePrev(d); return; }
       if(!d.moved){
         // a tap: select in place, never move the piece
         if(selected === p) deselect(); else select(p);
         return;
       }
-      if(!d.lifted){ restorePrev(); return; }
+      if(!d.lifted){ restorePrev(d); return; }
       deselect();
       var brect = board.getBoundingClientRect();
       // dropped outside the board in screen space: back to the tray, never lost
@@ -932,6 +934,8 @@
     }
     el.addEventListener("pointerup", function(e){ finish(e, false); });
     el.addEventListener("pointercancel", function(e){ finish(e, true); });
+    window.addEventListener("pointerup", function(e){ finish(e, false); });
+    window.addEventListener("pointercancel", function(e){ finish(e, true); });
   }
 
   /* ---------------- controls ---------------- */
