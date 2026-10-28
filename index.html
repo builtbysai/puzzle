@@ -485,6 +485,7 @@
   var startedAt = 0, elapsed = 0, timerId = 0, running = false, solved = false;
   var selected = null;    // piece chosen by tap, waiting for a board tap
   var undoStack = [];
+  var activeFinish = null, activeDragPiece = null, orphanX = 0, orphanY = 0;
   var loadSeq = 0;
   var undoBtn = document.getElementById("undoBtn");
   var picError = document.getElementById("picError");
@@ -854,6 +855,10 @@
 
     el.addEventListener("pointerdown", function(e){
       if(p.state === "locked" || solved) return;
+      if(activeFinish && activeDragPiece !== p){
+        var f = activeFinish; activeFinish = null; activeDragPiece = null;
+        try{ f({ clientX: orphanX, clientY: orphanY, pointerType: "mouse" }, false); }catch(err){}
+      }
       e.preventDefault();
       drag = {
         id: e.pointerId,
@@ -870,6 +875,8 @@
       drag.grabDY = e.clientY - rect.top;
       el.classList.add("dragging");
       el.setPointerCapture(e.pointerId);
+      activeFinish = finish; activeDragPiece = p;
+      orphanX = e.clientX; orphanY = e.clientY;
       startTimer();
     });
 
@@ -888,12 +895,13 @@
         renderPiece(p);
         positionPiece(p);
         var nr = el.getBoundingClientRect();
-        drag.grabDX = nr.width / 2;
-        drag.grabDY = nr.height / 2;
+        drag.grabDX = drag.grabFX * nr.width;
+        drag.grabDY = drag.grabFY * nr.height;
         drag.lifted = true;
         updateStats();
       }
       if(p.state !== "loose") return;
+      orphanX = e.clientX; orphanY = e.clientY;
       var brect = board.getBoundingClientRect();
       var m = margin();
       var lift = e.pointerType === "touch" ? cellH() * 0.55 : 0;
@@ -911,8 +919,9 @@
       updateStats();
     }
     function finish(e, cancelled){
-      if(!drag || e.pointerId !== drag.id) return;
+      if(!drag) return;
       var d = drag; drag = null;
+      if(activeDragPiece === p){ activeFinish = null; activeDragPiece = null; }
       el.classList.remove("dragging");
       if(cancelled){ if(d.lifted) restorePrev(d); return; }
       if(!d.moved){
@@ -936,6 +945,7 @@
     el.addEventListener("pointercancel", function(e){ finish(e, true); });
     window.addEventListener("pointerup", function(e){ finish(e, false); });
     window.addEventListener("pointercancel", function(e){ finish(e, true); });
+    el.addEventListener("lostpointercapture", function(){ if(drag) finish({ clientX: orphanX, clientY: orphanY, pointerType: "mouse" }, true); });
   }
 
   /* ---------------- controls ---------------- */
