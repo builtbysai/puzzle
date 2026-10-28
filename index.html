@@ -750,7 +750,11 @@
 
   /* ---------------- undo: a piece can never be lost by a bad drop ---------------- */
   function pushUndo(p){
-    undoStack.push({ p:p, state:p.state, lx:p.lx, ly:p.ly, placed:placed, moves:moves, solved:solved });
+    var st = (p._us !== undefined ? p._us : p.state);
+    var lx = (p._us !== undefined ? p._ulx : p.lx);
+    var ly = (p._us !== undefined ? p._uly : p.ly);
+    delete p._us; delete p._ulx; delete p._uly;
+    undoStack.push({ p:p, state:st, lx:lx, ly:ly, placed:placed, moves:moves, solved:solved });
     if(undoStack.length > 50) undoStack.shift();
   }
   function undoLast(){
@@ -860,6 +864,7 @@
         try{ f({ clientX: orphanX, clientY: orphanY, pointerType: "mouse" }, false); }catch(err){}
       }
       e.preventDefault();
+      p._us = p.state; p._ulx = p.lx; p._uly = p.ly;
       drag = {
         id: e.pointerId,
         grabFX: 0, grabFY: 0,
