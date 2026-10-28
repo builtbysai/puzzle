@@ -762,6 +762,7 @@
     var p = u.p;
     p.state = u.state; p.lx = u.lx; p.ly = u.ly;
     p.el.classList.remove("locked");
+    if(u.state === "loose" && (u.lx > 1 || u.lx < -0.5 || u.ly > 1 || u.ly < -0.5)) u.state = "tray";
     if(u.state === "tray"){ tray.appendChild(p.el); }
     else if(u.state === "loose"){ looseLayer.appendChild(p.el); positionPiece(p); }
     else { placedLayer.appendChild(p.el); p.el.classList.add("locked"); positionPiece(p); }
@@ -864,7 +865,7 @@
         try{ f({ clientX: orphanX, clientY: orphanY, pointerType: "mouse" }, false); }catch(err){}
       }
       e.preventDefault();
-      p._us = p.state; p._ulx = p.lx; p._uly = p.ly;
+      if(p._us === undefined){ p._us = p.state; p._ulx = p.lx; p._uly = p.ly; }
       drag = {
         id: e.pointerId,
         grabFX: 0, grabFY: 0,
